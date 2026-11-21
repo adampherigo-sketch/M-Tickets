@@ -1,7 +1,7 @@
 import { WebhookSignatureError } from '@zevaryn/m-tickets/payments'
 import { handlePaymentWebhook } from '@zevaryn/m-tickets/server'
 import { NextResponse, type NextRequest } from 'next/server'
-import { ticketsContext } from '@/lib/tickets'
+import { dispatchAfterResponse, ticketsContext } from '@/lib/tickets'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text()
   try {
     const outcome = await handlePaymentWebhook(ctx, 'stripe', rawBody, request.headers.get('stripe-signature'))
+    // The order's confirmation was queued in the same transaction: send it now.
+    if (outcome === 'order_completed') dispatchAfterResponse()
     return NextResponse.json({ received: true, outcome })
   } catch (error) {
     if (error instanceof WebhookSignatureError)

@@ -1,5 +1,11 @@
 import type { EventInput, TicketTypeInput } from '@zevaryn/m-tickets/db'
-import { isValidEventSlug, parseMoneyToCents, slugify, zonedLocalToUtc } from '@zevaryn/m-tickets/domain'
+import {
+  isValidEventSlug,
+  parseMoneyToCents,
+  slugify,
+  zonedLocalToUtc,
+  type DeliveryChoice,
+} from '@zevaryn/m-tickets/domain'
 import { z } from 'zod'
 
 /** Form posts arrive as strings; this turns them into repository inputs or a message. */
@@ -141,6 +147,11 @@ export function parseOrderLines(form: FormData): { ticketTypeId: string; quantit
     if (Number.isInteger(quantity) && quantity > 0) lines.push({ ticketTypeId: key.slice(4), quantity })
   }
   return lines
+}
+
+/** "Send my tickets by": email unless the buyer picked text (only offered when texting is on). */
+export function parseDeliveryChoice(form: FormData): DeliveryChoice {
+  return field(form, 'delivery') === 'sms' ? { channel: 'sms', phone: field(form, 'buyerPhone') } : { channel: 'email' }
 }
 
 /**

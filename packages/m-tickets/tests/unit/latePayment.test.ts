@@ -77,7 +77,14 @@ function context() {
     service: {} as DbClient,
     payments: new PaymentProviderRegistry([provider]),
     publisher: bus,
-    config: { appUrl: 'http://localhost:3000', qrSecret: 'x'.repeat(32), holdMinutes: 35, checkoutSessionMinutes: 31 },
+    config: {
+      appUrl: 'http://localhost:3000',
+      qrSecret: 'x'.repeat(32),
+      holdMinutes: 35,
+      checkoutSessionMinutes: 31,
+      deliveryKey: 'd'.repeat(32),
+      smsEnabled: false,
+    },
     now: () => new Date(),
   }
   return { ctx, refund, bus }

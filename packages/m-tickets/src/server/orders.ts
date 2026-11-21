@@ -6,6 +6,7 @@
  *                         own provider checkout; the webhook completes it
  */
 import {
+  encryptDeliveryToken,
   generateAccessToken,
   generateUniqueTicketCodes,
   hashAccessToken,
@@ -18,6 +19,7 @@ import {
 import {
   attachCheckout,
   completeOrder,
+  discardOrderDelivery,
   expireOrder,
   findOrderIdByPaymentRef,
   finishLateRefund,
@@ -29,6 +31,7 @@ import {
   logOrderEvent,
   placeOrder as placeOrderRow,
   refundOrder,
+  saveOrderDelivery,
   TicketsDbError,
   updatePaymentAccountStatus,
   type BuyerOrder,
@@ -66,6 +69,7 @@ const DB_REJECTION_MESSAGES: Record<string, string> = {
   event_not_on_sale: 'This event is not on sale.',
   payments_not_configured: 'This organizer is not taking online payments yet.',
   price_changed: 'Prices changed while you were ordering. Please review and try again.',
+  sms_unavailable: 'Text delivery is not available yet. Please choose email.',
 }
 
 const rejected = (code: string): PlaceOrderOutcome => ({
@@ -86,6 +90,7 @@ export async function placeOrder(
 
   const plan = planOrder(input.request, await getTicketTypesForSale(ctx.service, event), now)
   if (!plan.ok) return rejected(plan.error.code)
+  if (plan.value.delivery.channel === 'sms' && !ctx.config.smsEnabled) return rejected('sms_unavailable')
 
   let account: TenantPaymentAccount | null = null
   if (plan.value.kind === 'paid') {
@@ -95,6 +100,16 @@ export async function placeOrder(
 
   const orderToken = generateAccessToken()
   const accessTokenHash = await hashAccessToken(orderToken)
+
+  // Before the order exists: a free order completes inside placeOrderRow, and
+  // the confirmation it queues there reads this row for the channel. The token
+  // is kept encrypted so a paid order's confirmation can carry the link later.
+  await saveOrderDelivery(ctx.service, {
+    accessTokenHash,
+    tenantId: event.tenantId,
+    delivery: plan.value.delivery,
+    tokenCiphertext: await encryptDeliveryToken(orderToken, accessTokenHash, ctx.config.deliveryKey),
+  })
 
   // Ticket codes are random; the unique index catches a collision and we retry.
   let placed: PlacedOrder | null = null
@@ -119,10 +134,9 @@ export async function placeOrder(
         ...(account ? { holdUntil: addMinutes(now, ctx.config.holdMinutes), provider: account.provider } : {}),
       })
     } catch (error) {
-      if (error instanceof TicketsDbError) {
-        if (error.code === 'code_collision' && attempt < 3) continue
-        if (REJECTABLE_DB_CODES.has(error.code)) return rejected(error.code)
-      }
+      if (error instanceof TicketsDbError && error.code === 'code_collision' && attempt < 3) continue
+      await discardOrderDelivery(ctx.service, accessTokenHash)
+      if (error instanceof TicketsDbError && REJECTABLE_DB_CODES.has(error.code)) return rejected(error.code)
       throw error
     }
   }

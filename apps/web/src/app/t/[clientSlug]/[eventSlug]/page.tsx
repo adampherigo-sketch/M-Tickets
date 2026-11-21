@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Banners, type SearchParams } from '@/app/messages'
 import { publicClient } from '@/lib/supabase/clients'
+import { ticketsContext } from '@/lib/tickets'
 import { placeOrderAction } from './actions'
 
 type Params = Promise<{ clientSlug: string; eventSlug: string }>
@@ -43,6 +44,7 @@ export default async function PublicEventPage({
   const { tenant, event, ticket_types: ticketTypes } = data
   const onSale = ticketTypes.filter((t) => t.salesState === 'on_sale')
   const allFree = onSale.every((t) => t.kind === 'rsvp')
+  const smsEnabled = ticketsContext().config.smsEnabled
 
   return (
     <main className="mt-page mt-narrow">
@@ -100,9 +102,28 @@ export default async function PublicEventPage({
               <input name="buyerName" autoComplete="name" required maxLength={200} />
             </label>
             <label className="mt-field">
-              <span>Email (your tickets are sent here)</span>
+              <span>{smsEnabled ? 'Email' : 'Email (your tickets are sent here)'}</span>
               <input name="buyerEmail" type="email" autoComplete="email" required maxLength={320} />
             </label>
+            {smsEnabled ? (
+              <fieldset className="mt-field">
+                <legend>Send my tickets by</legend>
+                <label>
+                  <input type="radio" name="delivery" value="email" defaultChecked /> Email
+                </label>
+                <label>
+                  <input type="radio" name="delivery" value="sms" /> Text message
+                </label>
+                <label className="mt-field">
+                  <span>Mobile number (for text)</span>
+                  <input name="buyerPhone" type="tel" autoComplete="tel" inputMode="tel" maxLength={32} />
+                </label>
+                <p className="mt-muted">
+                  By choosing text, you agree to get messages about this order. Msg &amp; data rates may apply. Reply
+                  STOP to opt out.
+                </p>
+              </fieldset>
+            ) : null}
             <button type="submit" className="mt-button mt-button--primary">
               {allFree ? 'RSVP' : 'Continue to payment'}
             </button>
