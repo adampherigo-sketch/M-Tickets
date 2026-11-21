@@ -8,10 +8,15 @@ import { err, ok, type Result, type TicketKind } from './types'
 
 export const MAX_TICKETS_PER_ORDER = 50
 
+/** How the buyer wants their ticket link: email (the default) or a text message. */
+export type DeliveryChoice = { channel: 'email' } | { channel: 'sms'; phone: string }
+
 export interface OrderRequest {
   buyerName: string
   buyerEmail: string
   lines: readonly { ticketTypeId: string; quantity: number }[]
+  /** Omitted means email. A phone number here is raw buyer input; planOrder normalizes it. */
+  delivery?: DeliveryChoice
 }
 
 export interface PlannableTicketType extends InventoryInput {
@@ -40,6 +45,8 @@ export interface OrderPlan {
   kind: 'free' | 'paid'
   /** Trimmed name and lowercased email: what is stored and sent to the provider. */
   buyer: { name: string; email: string }
+  /** The phone, when texting, is normalized to E.164 (+15551234567). */
+  delivery: DeliveryChoice
   currency: string
   totalCents: number
   lines: PlannedLine[]
@@ -53,9 +60,27 @@ export type OrderRejection =
   | { code: 'too_many_tickets'; max: number }
   | { code: 'unknown_ticket_type'; ticketTypeId: string }
   | { code: 'mixed_currency' }
+  | { code: 'invalid_phone' }
   | { code: PurchaseRejection; ticketTypeId: string; ticketTypeName: string }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * A phone number in E.164 form, or null. Accepts the usual ways people type a
+ * number: spaces, dashes, dots, parentheses. Ten digits (or eleven starting
+ * with 1) without a "+" are read as a US/Canada number.
+ */
+export function normalizePhone(input: string): string | null {
+  const trimmed = input.trim()
+  if (!/^\+?[0-9\s().-]+$/.test(trimmed)) return null
+  const digits = trimmed.replace(/[^0-9]/g, '')
+  let e164: string
+  if (trimmed.startsWith('+')) e164 = `+${digits}`
+  else if (digits.length === 10) e164 = `+1${digits}`
+  else if (digits.length === 11 && digits.startsWith('1')) e164 = `+${digits}`
+  else return null
+  return /^\+[1-9][0-9]{7,14}$/.test(e164) ? e164 : null
+}
 
 export function planOrder(
   request: OrderRequest,
@@ -66,6 +91,13 @@ export function planOrder(
   const buyerEmail = request.buyerEmail.trim().toLowerCase()
   if (buyerName.length === 0 || buyerName.length > 200) return err({ code: 'invalid_buyer', field: 'buyerName' })
   if (!EMAIL.test(buyerEmail) || buyerEmail.length > 320) return err({ code: 'invalid_buyer', field: 'buyerEmail' })
+
+  let delivery: DeliveryChoice = { channel: 'email' }
+  if (request.delivery?.channel === 'sms') {
+    const phone = normalizePhone(request.delivery.phone)
+    if (!phone) return err({ code: 'invalid_phone' })
+    delivery = { channel: 'sms', phone }
+  }
 
   const byId = new Map(ticketTypes.map((type) => [type.id, type]))
 
@@ -107,6 +139,7 @@ export function planOrder(
   return ok({
     kind: totalCents > 0 ? 'paid' : 'free',
     buyer: { name: buyerName, email: buyerEmail },
+    delivery,
     currency: currency!,
     totalCents,
     lines,
@@ -120,6 +153,7 @@ export const ORDER_REJECTION_MESSAGES: Readonly<Record<OrderRejection['code'], s
   too_many_tickets: `You can get up to ${MAX_TICKETS_PER_ORDER} tickets in one order.`,
   unknown_ticket_type: 'That ticket is no longer available.',
   mixed_currency: 'Tickets priced in different currencies must be bought separately.',
+  invalid_phone: 'Please enter a valid mobile number, or choose email.',
   invalid_quantity: 'Quantities must be whole numbers.',
   not_on_sale_yet: 'Sales for that ticket have not started yet.',
   sales_ended: 'Sales for that ticket have ended.',

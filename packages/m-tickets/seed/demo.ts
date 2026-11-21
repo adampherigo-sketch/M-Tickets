@@ -154,6 +154,13 @@ export async function seedDemo(db: SqlRunner, options: { qrSecret: string; now?:
         await hashAccessToken(token),
       ],
     )
+    // Inserting a completed order queues its confirmation. Demo buyers are
+    // example.com addresses with links printed below: nothing to send.
+    await db.query(
+      `update public.ticket_messages set status = 'sent', sent_at = now()
+       where order_id = $1 and template = 'order_confirmation'`,
+      [row!.id],
+    )
     const tickets: DemoSummary['orders'][number]['tickets'] = []
     for (const [i, attendee] of order.attendees.entries()) {
       const code = codes[next++]!

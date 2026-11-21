@@ -2,8 +2,8 @@
 
 import { placeOrder } from '@zevaryn/m-tickets/server'
 import { redirect } from 'next/navigation'
-import { parseOrderLines, withMessage } from '@/lib/forms'
-import { ticketsContext } from '@/lib/tickets'
+import { parseDeliveryChoice, parseOrderLines, withMessage } from '@/lib/forms'
+import { dispatchAfterResponse, ticketsContext } from '@/lib/tickets'
 
 /**
  * Public, unauthenticated. All validation happens in the M-Tickets server layer
@@ -19,9 +19,14 @@ export async function placeOrderAction(clientSlug: string, eventSlug: string, fo
       buyerName: String(form.get('buyerName') ?? ''),
       buyerEmail: String(form.get('buyerEmail') ?? ''),
       lines: parseOrderLines(form),
+      delivery: parseDeliveryChoice(form),
     },
   })
   if (outcome.kind === 'rejected') redirect(withMessage(eventPath, 'error', outcome.message))
-  if (outcome.kind === 'confirmed') redirect(`/t/${encodeURIComponent(clientSlug)}/orders/${outcome.orderToken}`)
+  if (outcome.kind === 'confirmed') {
+    // A free order is complete already and its confirmation is queued: send it now.
+    dispatchAfterResponse()
+    redirect(`/t/${encodeURIComponent(clientSlug)}/orders/${outcome.orderToken}`)
+  }
   redirect(outcome.redirectUrl)
 }

@@ -3,7 +3,7 @@
 import type { ThankYouState } from '@zevaryn/m-tickets/ui'
 import { thankAttendees } from '@zevaryn/m-tickets/server'
 import { requireManager } from '@/lib/auth'
-import { ticketsContext } from '@/lib/tickets'
+import { dispatchAfterResponse, ticketsContext } from '@/lib/tickets'
 
 export async function thankAttendeesAction(
   eventId: string,
@@ -13,11 +13,12 @@ export async function thankAttendeesAction(
   const { supabase } = await requireManager()
   try {
     const queued = await thankAttendees(ticketsContext(), supabase, eventId)
+    if (queued > 0) dispatchAfterResponse()
     return {
       message:
         queued === 0
           ? 'Everyone who checked in has already been thanked.'
-          : `Queued ${queued} thank-you ${queued === 1 ? 'message' : 'messages'}. (Sending is not switched on yet.)`,
+          : `Sending ${queued} thank-you ${queued === 1 ? 'email' : 'emails'}.`,
     }
   } catch (error) {
     console.error(error)

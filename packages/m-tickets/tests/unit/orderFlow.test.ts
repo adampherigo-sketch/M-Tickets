@@ -17,6 +17,8 @@ const db = vi.hoisted(() => ({
   getOrderFacts: vi.fn(),
   listPaymentAccounts: vi.fn(),
   expireOrder: vi.fn(),
+  saveOrderDelivery: vi.fn(),
+  discardOrderDelivery: vi.fn(),
 }))
 vi.mock('../../src/db', async (importOriginal) => ({ ...(await importOriginal<object>()), ...db }))
 
@@ -60,7 +62,14 @@ function context() {
     service: {} as DbClient,
     payments: new PaymentProviderRegistry([provider]),
     publisher: bus,
-    config: { appUrl: 'http://localhost:3000', qrSecret: 'x'.repeat(32), holdMinutes: 35, checkoutSessionMinutes: 31 },
+    config: {
+      appUrl: 'http://localhost:3000',
+      qrSecret: 'x'.repeat(32),
+      holdMinutes: 35,
+      checkoutSessionMinutes: 31,
+      deliveryKey: 'd'.repeat(32),
+      smsEnabled: false,
+    },
     now: () => now,
   }
   return { ctx, bus }

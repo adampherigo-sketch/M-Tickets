@@ -226,40 +226,61 @@ export type Database = {
           id: string
           tenant_id: string
           event_id: string
-          ticket_id: string
+          ticket_id: string | null
           template: string
           channel: string
-          to_email: string
+          to_email: string | null
           status: Database["public"]["Enums"]["ticket_message_status"]
           queued_by: string | null
           created_at: string
           sent_at: string | null
+          order_id: string | null
+          to_phone: string | null
+          attempts: number
+          next_attempt_at: string
+          locked_until: string | null
+          last_error: string | null
+          provider_message_id: string | null
         }
         Insert: {
           id?: string
           tenant_id: string
           event_id: string
-          ticket_id: string
+          ticket_id?: string | null
           template: string
           channel?: string
-          to_email: string
+          to_email?: string | null
           status?: Database["public"]["Enums"]["ticket_message_status"]
           queued_by?: string | null
           created_at?: string
           sent_at?: string | null
+          order_id?: string | null
+          to_phone?: string | null
+          attempts?: number
+          next_attempt_at?: string
+          locked_until?: string | null
+          last_error?: string | null
+          provider_message_id?: string | null
         }
         Update: {
           id?: string
           tenant_id?: string
           event_id?: string
-          ticket_id?: string
+          ticket_id?: string | null
           template?: string
           channel?: string
-          to_email?: string
+          to_email?: string | null
           status?: Database["public"]["Enums"]["ticket_message_status"]
           queued_by?: string | null
           created_at?: string
           sent_at?: string | null
+          order_id?: string | null
+          to_phone?: string | null
+          attempts?: number
+          next_attempt_at?: string
+          locked_until?: string | null
+          last_error?: string | null
+          provider_message_id?: string | null
         }
         Relationships: [
           {
@@ -274,6 +295,48 @@ export type Database = {
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_order_delivery: {
+        Row: {
+          access_token_hash: string
+          tenant_id: string
+          channel: string
+          phone: string | null
+          token_ciphertext: string | null
+          created_at: string
+        }
+        Insert: {
+          access_token_hash: string
+          tenant_id: string
+          channel?: string
+          phone?: string | null
+          token_ciphertext?: string | null
+          created_at?: string
+        }
+        Update: {
+          access_token_hash?: string
+          tenant_id?: string
+          channel?: string
+          phone?: string | null
+          token_ciphertext?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_order_delivery_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -642,6 +705,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      tickets_claim_messages: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
       tickets_expire_stale_orders: {
         Args: never
         Returns: number
@@ -651,6 +720,20 @@ export type Database = {
           p_order_id: string
           p_provider_refund_ref: string
         }
+        Returns: Json
+      }
+      tickets_finish_message: {
+        Args: {
+          p_message_id: string
+          p_sent: boolean
+          p_error?: string
+          p_retry?: boolean
+          p_provider_message_id?: string
+        }
+        Returns: string
+      }
+      tickets_housekeeping: {
+        Args: never
         Returns: Json
       }
       tickets_place_order: {

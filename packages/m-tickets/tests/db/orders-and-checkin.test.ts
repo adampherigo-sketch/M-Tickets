@@ -402,7 +402,7 @@ describe('thank attendees', () => {
     const [second] = await db.query<{ n: number }>(`select public.tickets_queue_thank_you($1) as n`, [t.eventId])
     expect(second!.n).toBe(0)
     const messages = await db.query<{ to_email: string; status: string }>(
-      `select to_email, status::text from public.ticket_messages where event_id = $1`,
+      `select to_email, status::text from public.ticket_messages where event_id = $1 and template = 'thank_you'`,
       [t.eventId],
     )
     expect(messages).toEqual([

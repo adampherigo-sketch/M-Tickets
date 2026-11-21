@@ -23,6 +23,11 @@ const serverSchema = z
     STRIPE_SECRET_KEY: optional(z.string().regex(/^(sk|rk)_(test|live)_/, 'Expected a Stripe secret key')),
     STRIPE_CONNECT_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_')),
     STRIPE_CONNECT_ACCOUNT_TYPE: optional(z.enum(['standard', 'express'])),
+    TICKETS_DELIVERY_KEY: z.string().min(32, 'TICKETS_DELIVERY_KEY must be at least 32 characters'),
+    RESEND_API_KEY: optional(z.string().startsWith('re_', 'Expected a Resend API key (re_...)')),
+    TICKETS_EMAIL_FROM: optional(z.email('TICKETS_EMAIL_FROM must be a plain address, e.g. tickets@mail.example.com')),
+    TICKETS_EMAIL_REPLY_TO: optional(z.email()),
+    CRON_SECRET: optional(z.string().min(32, 'CRON_SECRET must be at least 32 characters')),
   })
   .superRefine((env, ctx) => {
     if (process.env.NODE_ENV !== 'production' && env.STRIPE_SECRET_KEY && /_live_/.test(env.STRIPE_SECRET_KEY)) {
@@ -30,6 +35,19 @@ const serverSchema = z
     }
     if (env.TICKETS_QR_SECRET.startsWith('replace-with')) {
       ctx.addIssue({ code: 'custom', message: 'TICKETS_QR_SECRET is still the placeholder from .env.example' })
+    }
+    if (env.TICKETS_DELIVERY_KEY.startsWith('replace-with')) {
+      ctx.addIssue({ code: 'custom', message: 'TICKETS_DELIVERY_KEY is still the placeholder from .env.example' })
+    }
+    if (env.TICKETS_DELIVERY_KEY === env.TICKETS_QR_SECRET) {
+      ctx.addIssue({ code: 'custom', message: 'TICKETS_DELIVERY_KEY must differ from TICKETS_QR_SECRET' })
+    }
+    if (Boolean(env.RESEND_API_KEY) !== Boolean(env.TICKETS_EMAIL_FROM)) {
+      ctx.addIssue({ code: 'custom', message: 'Set RESEND_API_KEY and TICKETS_EMAIL_FROM together' })
+    }
+    // In production a missing email provider would silently drop every ticket email.
+    if (process.env.NODE_ENV === 'production' && !env.RESEND_API_KEY) {
+      ctx.addIssue({ code: 'custom', message: 'RESEND_API_KEY and TICKETS_EMAIL_FROM are required in production' })
     }
   })
 

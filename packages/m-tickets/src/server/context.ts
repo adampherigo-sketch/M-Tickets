@@ -15,6 +15,14 @@ export interface TicketsServerConfig {
   holdMinutes: number
   /** Provider checkout lifetime. Stripe requires at least 30 minutes. */
   checkoutSessionMinutes: number
+  /**
+   * Encrypts each order's ticket-link token until its confirmation is sent.
+   * 32+ characters. Changing it only costs pending confirmations their
+   * original link: they are sent with a fresh one instead.
+   */
+  deliveryKey: string
+  /** True once a text-message sender is registered; the buyer form then offers "Text". */
+  smsEnabled: boolean
 }
 
 export const DEFAULT_HOLD_MINUTES = 35

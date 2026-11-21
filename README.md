@@ -71,9 +71,9 @@ RLS through `app.is_tenant_member()`, and domain events published via
 1. **Local Supabase run-through of every screen, plus Stripe in test mode** (`npm run db:start`, `db:seed`, `test:db:supabase`, `stripe:listen`). This pass was verified on PGlite and with `next build`, not against a live PostgREST or Stripe.
 2. **Transactional outbox**: write `domain_events` rows inside the same database transaction as the state change, plus a relay that delivers them and stamps `published_at`. Today publishing happens after the commit and can drop an event.
 3. **Rate limiting / bot protection** on the public order form and on check-in.
-4. **Confirmation email with the ticket link** (sender behind `MessageSender`), then a dispatcher for `ticket_messages` so "Thank attendees" actually sends.
-5. **Organizer order management**: order list, refund button (service exists: `refundOrderAsOrganizer`), attendee name edits, resend ticket link, and the `ticket_order_log` history.
-6. **Cron for `tickets_expire_stale_orders()`** (Supabase scheduled function or pg_cron).
+4. **Schedule the cron.** `GET /api/cron/tickets` (with `Authorization: Bearer $CRON_SECRET`) every 5 minutes sends queued email, retries failures and releases abandoned holds. Vercel Cron, a GitHub Actions schedule, or Supabase `pg_cron` + `pg_net` all work. Until it runs, emails still go out right after each order, but retries and hold expiry wait.
+5. **Organizer order management**: order list, refund button (service exists: `refundOrderAsOrganizer`), attendee name edits, resend ticket link (issue a new token, re-queue the confirmation), and the `ticket_order_log` history.
+6. **Text-message delivery**: an `SmsSender` (e.g. Twilio) registered in `apps/web/src/lib/tickets.ts` turns on the "Text message" choice on the buy form. Needs US A2P 10DLC registration first.
 7. **Per-attendee names** at checkout and partial refunds.
 8. **Realtime tally** (Supabase Realtime) in place of 5-second polling; tenant switcher; team invites.
 9. **Square adapter** behind the same `PaymentProvider` interface.

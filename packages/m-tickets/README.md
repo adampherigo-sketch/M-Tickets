@@ -54,7 +54,8 @@ Routes live in `apps/web/src/app` and stay thin: they parse input, call
 | `tenant_payment_accounts` | Provider account per tenant; at most one `connected` decides checkout                                                                                  |
 | `ticket_checkin_log`      | The brief's `checkin_log`. Every scan or typed code, failures included. Append-only                                                                    |
 | `ticket_order_log`        | Out-of-the-ordinary order history: late payments honored or refunded, refund failures. Append-only                                                     |
-| `ticket_messages`         | Outbound message queue (thank-you notes). Sending is a stub                                                                                            |
+| `ticket_messages`         | Outbound message queue: order confirmations and thank-you notes, by email or text. Retries with backoff, 5 attempts                                    |
+| `ticket_order_delivery`   | Per order: email or text, the phone, and the ticket-link token encrypted until the confirmation is sent. Service role only                             |
 | `domain_events` (core)    | Outbox for module-to-module events                                                                                                                     |
 
 Views (security invoker, so they obey RLS): `ticket_type_availability`
@@ -70,17 +71,39 @@ Views (security invoker, so they obey RLS): `ticket_type_availability`
 
 ## Database functions
 
-| Function                                                     | Caller            | Purpose                                                                                           |
-| ------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------- |
-| `tickets_public_storefront(slug)`                            | anon              | Published upcoming events for a client                                                            |
-| `tickets_public_event(slug, event_slug)`                     | anon              | One event + ticket types and sales state                                                          |
-| `tickets_place_order(...)`                                   | service role      | Locks ticket types, re-checks windows/limits, prices from the DB, creates order + tickets         |
-| `tickets_complete_order(...)`                                | service role      | Payment confirmed → tickets valid, or `sold_out` if the seats are gone. Idempotent; checks amount |
-| `tickets_finish_late_refund(id, refund_ref)`                 | service role      | Sold-out late payment refunded by the provider → order refunded. Idempotent                       |
-| `tickets_expire_order(id)` / `tickets_expire_stale_orders()` | service role      | Release holds                                                                                     |
-| `tickets_refund_order(id)`                                   | service role      | Tickets → refunded. Idempotent                                                                    |
-| `tickets_check_in(event, method, code, rejected_reason)`     | any tenant member | Row-locked, prevents double check-in, logs every attempt; cross-tenant codes report `not_found`   |
-| `tickets_queue_thank_you(event)`                             | owner/admin       | One queued message per checked-in guest, idempotent                                               |
+| Function                                                        | Caller            | Purpose                                                                                           |
+| --------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------- |
+| `tickets_public_storefront(slug)`                               | anon              | Published upcoming events for a client                                                            |
+| `tickets_public_event(slug, event_slug)`                        | anon              | One event + ticket types and sales state                                                          |
+| `tickets_place_order(...)`                                      | service role      | Locks ticket types, re-checks windows/limits, prices from the DB, creates order + tickets         |
+| `tickets_complete_order(...)`                                   | service role      | Payment confirmed → tickets valid, or `sold_out` if the seats are gone. Idempotent; checks amount |
+| `tickets_finish_late_refund(id, refund_ref)`                    | service role      | Sold-out late payment refunded by the provider → order refunded. Idempotent                       |
+| `tickets_expire_order(id)` / `tickets_expire_stale_orders()`    | service role      | Release holds                                                                                     |
+| `tickets_refund_order(id)`                                      | service role      | Tickets → refunded. Idempotent                                                                    |
+| `tickets_check_in(event, method, code, rejected_reason)`        | any tenant member | Row-locked, prevents double check-in, logs every attempt; cross-tenant codes report `not_found`   |
+| `tickets_queue_thank_you(event)`                                | owner/admin       | One queued message per checked-in guest, idempotent                                               |
+| `tickets_claim_messages(limit)` / `tickets_finish_message(...)` | service role      | Dispatcher: lock due messages (skip locked), then record sent or schedule a retry                 |
+| `tickets_housekeeping()`                                        | service role      | Cron: expire stale holds, purge leftover delivery rows, wipe tokens of dead orders                |
+
+Order confirmations are queued by a trigger on `ticket_orders`, in the same
+transaction that completes the order, so a completed order always has one.
+
+## Ticket delivery
+
+- **Email** goes through Resend (`ResendEmailSender`, plain `fetch`). Without
+  `RESEND_API_KEY` in development, emails are printed to the server log
+  instead; production refuses to start without it.
+- **The confirmation** carries the buyer's ticket link, every ticket code, the
+  event time and venue. The QR codes are on the linked ticket page.
+- **The ticket link after payment.** Only the token's hash is on the order. The
+  server saves the token AES-GCM encrypted (`TICKETS_DELIVERY_KEY`, bound to
+  the hash) before placing the order and wipes it once the confirmation is sent.
+  If it is ever unreadable, the order gets a fresh link instead.
+- **Sending** happens right after the response (Next.js `after()`) and from the
+  cron route; each message is claimed by one worker, and Resend's
+  `Idempotency-Key` stops a retried send from arriving twice.
+- **Text messages** are built in (schema, templates, `SmsSender`) but off: the
+  buy form only offers "Text message" once an SMS sender is registered.
 
 ## Payments
 
