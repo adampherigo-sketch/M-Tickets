@@ -1,0 +1,18 @@
+{
+  "name": "@zevaryn/core",
+  "private": true,
+  "version": "0.1.0",
+  "description": "M-System core: tenancy and the domain-event contracts every module publishes through.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./events": "./src/events/index.ts",
+    "./tenancy": "./src/tenancy/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@zevaryn/database": "0.1.0"
+  }
+}

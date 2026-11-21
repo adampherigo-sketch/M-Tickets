@@ -1,0 +1,51 @@
+{
+  "name": "m-system",
+  "private": true,
+  "version": "0.1.0",
+  "description": "M-System by Zevaryn Systems: modules for small field-service and contractor businesses. First module: M-Tickets.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @zevaryn/web",
+    "build": "npm run build -w @zevaryn/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:db": "vitest run --project db",
+    "test:db:supabase": "TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres vitest run --project db",
+    "check": "npm run db:migrations:check && npm run typecheck && npm run lint && npm run test",
+    "db:migrations:sync": "tsx packages/database/scripts/sync-migrations.ts",
+    "db:migrations:check": "tsx packages/database/scripts/sync-migrations.ts --check",
+    "db:types": "npx --yes supabase@3 gen types typescript --local > packages/database/src/database.types.tmp && mv packages/database/src/database.types.tmp packages/database/src/database.types.ts",
+    "db:types:offline": "tsx packages/database/scripts/gen-types.ts",
+    "db:start": "npm run db:migrations:sync && npx --yes supabase@3 start",
+    "db:reset": "npm run db:migrations:sync && npx --yes supabase@3 db reset",
+    "db:seed": "tsx packages/m-tickets/seed/run.ts",
+    "stripe:listen": "stripe listen --forward-connect-to localhost:3000/api/webhooks/stripe"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.17",
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.4.6",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "eslint": "10.15.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
+    "pg": "8.23.1",
+    "prettier": "3.10.1",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0",
+    "vitest": "5.1.1"
+  }
+}

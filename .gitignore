@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# builds
+.next/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# tests
+coverage/
+test-results/
+
+# environment: only .env.example files (placeholder values) are committed
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# keys never belong in the repo
+*.key
+*.pem
+*.p12
+
+# supabase local state
+supabase/.branches
+supabase/.temp
+
+# editors and OS
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/

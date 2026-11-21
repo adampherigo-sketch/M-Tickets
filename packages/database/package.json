@@ -1,0 +1,19 @@
+{
+  "name": "@zevaryn/database",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The shared M-System Postgres: generated types, migration tooling and the PGlite test harness.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./migrations": "./src/migrations.ts",
+    "./testing": "./testing/harness.ts",
+    "./testing/pglite": "./testing/pglite.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.2"
+  }
+}
