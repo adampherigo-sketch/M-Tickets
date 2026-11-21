@@ -233,7 +233,9 @@ export function normalizeStripeEvent(event: Stripe.Event): WebhookResult {
     case 'checkout.session.async_payment_failed': {
       const session = event.data.object
       const orderId = session.metadata?.order_id ?? session.client_reference_id
-      return orderId ? { kind: 'checkout_expired', orderId } : { kind: 'ignored', eventType: event.type }
+      return orderId
+        ? { kind: 'checkout_expired', orderId, providerSessionId: session.id, providerAccountId: accountId }
+        : { kind: 'ignored', eventType: event.type }
     }
     case 'charge.refunded': {
       const charge = event.data.object

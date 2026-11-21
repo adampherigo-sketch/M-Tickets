@@ -143,11 +143,20 @@ export function parseOrderLines(form: FormData): { ticketTypeId: string; quantit
   return lines
 }
 
-/** Only same-site relative paths, so ?next= cannot redirect off-site. */
+/**
+ * Only same-site relative paths, so ?next= cannot redirect off-site. Control
+ * characters are refused too: browsers strip tabs and newlines from URLs, so
+ * "/\t/evil.example" would otherwise become "//evil.example".
+ */
 export function safeNextPath(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !value.includes('\\')
-    ? value
-    : fallback
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
+    return fallback
+  }
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i)
+    if (code < 0x20 || code === 0x7f) return fallback
+  }
+  return value
 }
 
 export function withMessage(path: string, key: 'error' | 'notice', message: string): string {

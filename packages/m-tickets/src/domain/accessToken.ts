@@ -2,13 +2,8 @@
  * Buyer ticket links (/t/<client>/orders/<token>). The token is 256 random
  * bits; only its SHA-256 is stored, so a database leak does not leak links.
  */
+import { base64url } from './base64url'
 import { cryptoRandomBytes, type RandomBytes } from './ticketCode'
-
-function base64url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
 
 export function generateAccessToken(random: RandomBytes = cryptoRandomBytes): string {
   return base64url(random(32))

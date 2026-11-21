@@ -9,6 +9,7 @@
  *
  * Uses Web Crypto only, so it runs in Node, the edge and the browser alike.
  */
+import { base64url } from './base64url'
 import { isTicketCode } from './ticketCode'
 
 export const QR_PREFIX = 'MT1'
@@ -21,12 +22,6 @@ function assertSecret(secret: string): void {
   if (secret.length < MIN_SECRET_LENGTH) {
     throw new Error(`TICKETS_QR_SECRET must be at least ${MIN_SECRET_LENGTH} characters`)
   }
-}
-
-function base64url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 async function sign(code: string, secret: string): Promise<string> {

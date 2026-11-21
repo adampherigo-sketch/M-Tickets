@@ -16,7 +16,6 @@ import {
   checkInTicket,
   getEvent,
   getOrder,
-  listPaymentAccounts,
   listTicketTypes,
   queueThankYou,
   setEventStatus,
@@ -25,6 +24,7 @@ import {
 } from '../db'
 import { ticketsEvent } from '../events/contracts'
 import type { PaymentProviderId } from '../payments/types'
+import { tenantPaymentAccount } from './accounts'
 import type { TicketsContext } from './context'
 import { applyRefund } from './orders'
 import { publishSafely } from './publish'
@@ -138,7 +138,7 @@ export async function refundOrderAsOrganizer(
   if (order.totalCents > 0) {
     if (!order.provider || !order.providerPaymentRef)
       throw new OrganizerActionError('invalid', 'Order has no payment to refund.')
-    const account = (await listPaymentAccounts(ctx.service, order.tenantId)).find((a) => a.provider === order.provider)
+    const account = await tenantPaymentAccount(ctx, order.tenantId, order.provider)
     if (!account)
       throw new OrganizerActionError('invalid', 'The payment account for this order is no longer connected.')
     await ctx.payments.get(order.provider).refund({
@@ -168,7 +168,7 @@ export async function startPaymentOnboarding(
 ): Promise<string> {
   requireManager(input.actorRole)
   const provider = ctx.payments.get(input.provider)
-  const existing = (await listPaymentAccounts(ctx.service, input.tenantId)).find((a) => a.provider === input.provider)
+  const existing = await tenantPaymentAccount(ctx, input.tenantId, input.provider)
   const base = `${ctx.config.appUrl}/organizer/payments`
   const result = await provider.connectAccount({
     tenantId: input.tenantId,
@@ -195,7 +195,7 @@ export async function refreshPaymentAccount(
   input: { tenantId: string; actorRole: TenantRole; provider: PaymentProviderId },
 ): Promise<void> {
   requireManager(input.actorRole)
-  const existing = (await listPaymentAccounts(ctx.service, input.tenantId)).find((a) => a.provider === input.provider)
+  const existing = await tenantPaymentAccount(ctx, input.tenantId, input.provider)
   if (!existing) return
   const status = await ctx.payments.get(input.provider).getAccountStatus(existing.providerAccountId)
   await upsertPaymentAccount(ctx.service, { ...existing, ...status })

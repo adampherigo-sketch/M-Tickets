@@ -10,6 +10,7 @@
  */
 import { useActionState, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { formatTicketCode, normalizeTicketCode, tallyAttendance } from '../../domain'
+import { Stat, STATUS_LABELS } from '../components'
 import { QrScanner } from './QrScanner'
 import type { AttendeeView, CheckInFeedback, ThankYouState } from './types'
 
@@ -115,18 +116,9 @@ export function CommandCenter(props: CommandCenterProps) {
   return (
     <div className="mt-command">
       <section className="mt-tally" aria-label="Attendance">
-        <div className="mt-stat">
-          <span className="mt-stat__value">{tally.checkedIn}</span>
-          <span className="mt-stat__label">arrived</span>
-        </div>
-        <div className="mt-stat">
-          <span className="mt-stat__value">{tally.notArrived}</span>
-          <span className="mt-stat__label">not here yet</span>
-        </div>
-        <div className="mt-stat">
-          <span className="mt-stat__value">{tally.expected}</span>
-          <span className="mt-stat__label">expected</span>
-        </div>
+        <Stat label="arrived" value={tally.checkedIn} />
+        <Stat label="not here yet" value={tally.notArrived} />
+        <Stat label="expected" value={tally.expected} />
         <div
           className="mt-progress"
           role="progressbar"
@@ -224,7 +216,7 @@ export function CommandCenter(props: CommandCenterProps) {
                     <span className={`mt-badge mt-badge--${a.status}`}>
                       {a.status === 'checked_in' && a.checkedInAt
                         ? `In ${new Date(a.checkedInAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-                        : a.status.replace('_', ' ')}
+                        : STATUS_LABELS[a.status]}
                     </span>
                   </td>
                   <td>

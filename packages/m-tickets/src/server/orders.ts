@@ -19,14 +19,14 @@ import {
   attachCheckout,
   completeOrder,
   expireOrder,
-  finishLateRefund,
-  logOrderEvent,
   findOrderIdByPaymentRef,
+  finishLateRefund,
   getOrderByAccessTokenHash,
   getOrderFacts,
   getPublishedEventForSale,
   getTicketTypesForSale,
   listPaymentAccounts,
+  logOrderEvent,
   placeOrder as placeOrderRow,
   refundOrder,
   TicketsDbError,
@@ -39,6 +39,7 @@ import {
 import { ticketsEvent } from '../events/contracts'
 import { selectCheckoutAccount } from '../payments/registry'
 import type { PaymentProviderId, TenantPaymentAccount, WebhookResult } from '../payments/types'
+import { tenantPaymentAccount } from './accounts'
 import type { TicketsContext } from './context'
 import { publishSafely } from './publish'
 
@@ -111,8 +112,8 @@ export async function placeOrder(
     try {
       placed = await placeOrderRow(ctx.service, {
         eventId: event.id,
-        buyerName: input.request.buyerName,
-        buyerEmail: input.request.buyerEmail,
+        buyerName: plan.value.buyer.name,
+        buyerEmail: plan.value.buyer.email,
         accessTokenHash,
         tickets,
         ...(account ? { holdUntil: addMinutes(now, ctx.config.holdMinutes), provider: account.provider } : {}),
@@ -127,18 +128,15 @@ export async function placeOrder(
   }
 
   if (placed.status === 'completed') {
-    await publishSafely(
-      ctx,
-      completionEvents(placed.tenantId, {
-        orderId: placed.orderId,
-        eventId: placed.eventId,
-        totalCents: placed.totalCents,
-        currency: placed.currency,
-        provider: null,
-        externalEventRef: event.externalEventRef,
-        tickets: placed.ticketIds.map((id, i) => ({ id, ticketTypeId: plan.value.attendees[i]!.ticketTypeId })),
-      }),
-    )
+    // Read the tickets back to pair each id with its ticket type: the database
+    // does not return them in request order. The order is already confirmed,
+    // so a failure here is logged and never shown to the buyer.
+    try {
+      const order = await getOrderFacts(ctx.service, placed.orderId)
+      if (order) await publishSafely(ctx, completionEvents(order, null, order.tickets))
+    } catch (error) {
+      console.error('[m-tickets] could not publish order completion', { orderId: placed.orderId }, error)
+    }
     return { kind: 'confirmed', orderToken }
   }
 
@@ -158,7 +156,7 @@ export async function placeOrder(
         tenantId: placed.tenantId,
         eventId: placed.eventId,
         currency: placed.currency,
-        buyerEmail: input.request.buyerEmail.trim().toLowerCase(),
+        buyerEmail: plan.value.buyer.email,
         totalCents: placed.totalCents,
         lines: plan.value.lines.map((line) => ({
           name: `${event.title}: ${line.name}`,
@@ -182,35 +180,26 @@ export async function placeOrder(
   }
 }
 
-interface CompletionFacts {
-  orderId: string
-  eventId: string
-  totalCents: number
-  currency: string
-  provider: PaymentProviderId | null
-  externalEventRef: string | null
-  tickets: { id: string; ticketTypeId: string }[]
-}
-
-function completionEvents(tenantId: string, facts: CompletionFacts) {
+/** order.completed, plus one ticket.issued per ticket that just became valid. */
+function completionEvents(order: OrderFacts, provider: PaymentProviderId | null, issued: OrderFacts['tickets']) {
   return [
-    ticketsEvent('tickets.order.completed', tenantId, {
-      orderId: facts.orderId,
-      eventId: facts.eventId,
-      kind: facts.totalCents > 0 ? 'paid' : 'free',
-      totalCents: facts.totalCents,
-      currency: facts.currency,
-      ticketCount: facts.tickets.length,
-      provider: facts.provider,
-      externalEventRef: facts.externalEventRef,
+    ticketsEvent('tickets.order.completed', order.tenantId, {
+      orderId: order.id,
+      eventId: order.eventId,
+      kind: order.totalCents > 0 ? 'paid' : 'free',
+      totalCents: order.totalCents,
+      currency: order.currency,
+      ticketCount: issued.length,
+      provider,
+      externalEventRef: order.externalEventRef,
     }),
-    ...facts.tickets.map((ticket) =>
-      ticketsEvent('tickets.ticket.issued', tenantId, {
+    ...issued.map((ticket) =>
+      ticketsEvent('tickets.ticket.issued', order.tenantId, {
         ticketId: ticket.id,
-        orderId: facts.orderId,
-        eventId: facts.eventId,
+        orderId: order.id,
+        eventId: order.eventId,
         ticketTypeId: ticket.ticketTypeId,
-        externalEventRef: facts.externalEventRef,
+        externalEventRef: order.externalEventRef,
       }),
     ),
   ]
@@ -252,12 +241,8 @@ export async function applyWebhookResult(
 ): Promise<WebhookOutcome> {
   switch (result.kind) {
     case 'checkout_completed': {
-      const order = await getOrderFacts(ctx.service, result.orderId)
-      if (!order) return 'unknown_order'
-      if (!(await paymentBelongsToOrder(ctx, providerId, order, result.providerAccountId, result.providerSessionId))) {
-        console.error('[m-tickets] webhook does not match the order it names', { orderId: order.id })
-        return 'rejected_mismatch'
-      }
+      const order = await verifiedOrder(ctx, providerId, result)
+      if (typeof order === 'string') return order
       const transition = await completeOrder(ctx.service, {
         orderId: order.id,
         provider: providerId,
@@ -272,18 +257,20 @@ export async function applyWebhookResult(
       const issued = new Set(transition.ticketIds)
       await publishSafely(
         ctx,
-        completionEvents(order.tenantId, {
-          ...order,
-          orderId: order.id,
-          provider: providerId,
-          tickets: order.tickets.filter((t) => issued.has(t.id)),
-        }),
+        completionEvents(
+          order,
+          providerId,
+          order.tickets.filter((t) => issued.has(t.id)),
+        ),
       )
       return 'order_completed'
     }
-    case 'checkout_expired':
-      await expireOrder(ctx.service, result.orderId)
+    case 'checkout_expired': {
+      const order = await verifiedOrder(ctx, providerId, result)
+      if (typeof order === 'string') return order
+      await expireOrder(ctx.service, order.id)
       return 'order_expired'
+    }
     case 'payment_refunded': {
       // Partial refunds (one ticket of several) are not modelled yet.
       if (!result.fullyRefunded) return 'partial_refund_ignored'
@@ -301,20 +288,25 @@ export async function applyWebhookResult(
 
 /**
  * A client could create a checkout on their own connected account naming
- * another client's order id. Only accept payment that happened on the
+ * another client's order id. Only act on a checkout event that happened on the
  * order's own tenant account, for the session we created.
  */
-async function paymentBelongsToOrder(
+async function verifiedOrder(
   ctx: TicketsContext,
   providerId: PaymentProviderId,
-  order: OrderFacts,
-  providerAccountId: string | null,
-  providerSessionId: string,
-): Promise<boolean> {
-  if (order.provider !== providerId || order.providerCheckoutRef !== providerSessionId) return false
-  const accounts = await listPaymentAccounts(ctx.service, order.tenantId)
-  const account = accounts.find((a) => a.provider === providerId)
-  return Boolean(account && providerAccountId && account.providerAccountId === providerAccountId)
+  result: { orderId: string; providerSessionId: string; providerAccountId: string | null },
+): Promise<OrderFacts | 'unknown_order' | 'rejected_mismatch'> {
+  const order = await getOrderFacts(ctx.service, result.orderId)
+  if (!order) return 'unknown_order'
+  const account =
+    order.provider === providerId && order.providerCheckoutRef === result.providerSessionId
+      ? await tenantPaymentAccount(ctx, order.tenantId, providerId)
+      : null
+  if (!account || !result.providerAccountId || account.providerAccountId !== result.providerAccountId) {
+    console.error('[m-tickets] webhook does not match the order it names', { orderId: order.id })
+    return 'rejected_mismatch'
+  }
+  return order
 }
 
 /**
@@ -330,7 +322,7 @@ async function refundSoldOutPayment(
   providerPaymentRef: string,
 ): Promise<WebhookOutcome> {
   const where = { tenantId: order.tenantId, eventId: order.eventId, orderId: order.id }
-  const account = (await listPaymentAccounts(ctx.service, order.tenantId)).find((a) => a.provider === providerId)
+  const account = await tenantPaymentAccount(ctx, order.tenantId, providerId)
   try {
     if (!account) throw new Error(`No ${providerId} account for tenant ${order.tenantId}`)
     const refund = await ctx.payments.get(providerId).refund({

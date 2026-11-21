@@ -7,17 +7,15 @@ import type { DbClient, Json } from '@zevaryn/database'
 import { z } from 'zod'
 import type { OrderStatus, PlannableTicketType, RefundReason, TicketKind, TicketStatus } from '../domain'
 import type { PaymentProviderId } from '../payments/types'
-import { TicketsDbError, toTicketsDbError, unwrap } from './errors'
+import { toTicketsDbError, unwrap } from './errors'
 
 export interface EventForSale {
   id: string
   tenantId: string
-  tenantName: string
   tenantSlug: string
   slug: string
   title: string
   endsAt: Date
-  externalEventRef: string | null
 }
 
 export async function getPublishedEventForSale(
@@ -27,7 +25,7 @@ export async function getPublishedEventForSale(
 ): Promise<EventForSale | null> {
   const { data, error } = await service
     .from('tickets_events')
-    .select('id, tenant_id, slug, title, ends_at, external_event_ref, tenants!inner(name, slug)')
+    .select('id, tenant_id, slug, title, ends_at, tenants!inner(slug)')
     .eq('tenants.slug', clientSlug.toLowerCase())
     .eq('slug', eventSlug.toLowerCase())
     .eq('status', 'published')
@@ -37,12 +35,10 @@ export async function getPublishedEventForSale(
   return {
     id: data.id,
     tenantId: data.tenant_id,
-    tenantName: data.tenants.name,
     tenantSlug: data.tenants.slug,
     slug: data.slug,
     title: data.title,
     endsAt: new Date(data.ends_at),
-    externalEventRef: data.external_event_ref,
   }
 }
 
@@ -387,7 +383,6 @@ export async function getOrderByAccessTokenHash(
   ])
   const e = unwrap(event, 'Load order event')
   const t = unwrap(tenant, 'Load order tenant')
-  if (!e || !t) throw new TicketsDbError('unknown', 'Order is missing its event or tenant')
   return {
     id: data.id,
     status: data.status,

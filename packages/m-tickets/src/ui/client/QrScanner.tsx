@@ -68,6 +68,8 @@ export function QrScanner({ onScan }: { onScan: (payload: string) => void }) {
         tick()
       })
       .catch((cause: unknown) => {
+        // Stopping the camera mid-start aborts play(); that is not an error.
+        if (cancelled) return
         setError(cause instanceof Error ? cause.message : 'Camera unavailable')
         setActive(false)
       })

@@ -152,9 +152,15 @@ describe('Stripe adapter', () => {
     expect(
       normalizeStripeEvent({
         type: 'checkout.session.expired',
-        data: { object: { metadata: { order_id: 'o1' } } },
+        account: 'acct_client123',
+        data: { object: { id: 'cs_3', metadata: { order_id: 'o1' } } },
       } as never),
-    ).toEqual({ kind: 'checkout_expired', orderId: 'o1' })
+    ).toEqual({
+      kind: 'checkout_expired',
+      orderId: 'o1',
+      providerSessionId: 'cs_3',
+      providerAccountId: 'acct_client123',
+    })
 
     expect(
       normalizeStripeEvent({

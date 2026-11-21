@@ -4,7 +4,7 @@
  */
 import type { DbClient, Tables } from '@zevaryn/database'
 import type { EventStatus, TicketKind } from '../domain'
-import { toTicketsDbError, unwrap } from './errors'
+import { TicketsDbError, toTicketsDbError, unwrap } from './errors'
 
 export interface OrganizerEvent {
   id: string
@@ -76,7 +76,7 @@ const EMPTY_STATS: EventStats = { ticketsSold: 0, rsvps: 0, checkedIn: 0, attend
 
 const toDate = (value: string | null) => (value ? new Date(value) : null)
 
-export function toOrganizerEvent(row: Tables<'tickets_events'>): OrganizerEvent {
+function toOrganizerEvent(row: Tables<'tickets_events'>): OrganizerEvent {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -120,17 +120,35 @@ function eventColumns(input: Partial<EventInput>) {
   }
 }
 
+/**
+ * Every event for a tenant with its counts. `currency` is the first ticket
+ * type's (the same rule the event page uses), or null with no ticket types.
+ */
 export async function listEventsWithStats(
   client: DbClient,
   tenantId: string,
-): Promise<(OrganizerEvent & { stats: EventStats })[]> {
-  const [events, stats] = await Promise.all([
+): Promise<(OrganizerEvent & { stats: EventStats; currency: string | null })[]> {
+  const [events, stats, types] = await Promise.all([
     client.from('tickets_events').select('*').eq('tenant_id', tenantId).order('starts_at', { ascending: false }),
     client.from('tickets_event_stats').select('*').eq('tenant_id', tenantId),
+    client
+      .from('ticket_types')
+      .select('event_id, currency')
+      .eq('tenant_id', tenantId)
+      .order('sort_order')
+      .order('created_at'),
   ])
   const rows = unwrap(events, 'List events')
   const byEvent = new Map(unwrap(stats, 'Load event stats').map((row) => [row.event_id, row]))
-  return rows.map((row) => ({ ...toOrganizerEvent(row), stats: toStats(byEvent.get(row.id)) }))
+  const currencyByEvent = new Map<string, string>()
+  for (const type of unwrap(types, 'Load ticket types')) {
+    if (!currencyByEvent.has(type.event_id)) currencyByEvent.set(type.event_id, type.currency)
+  }
+  return rows.map((row) => ({
+    ...toOrganizerEvent(row),
+    stats: toStats(byEvent.get(row.id)),
+    currency: currencyByEvent.get(row.id) ?? null,
+  }))
 }
 
 export async function getEvent(client: DbClient, eventId: string): Promise<OrganizerEvent | null> {
@@ -262,17 +280,41 @@ export async function createTicketType(
   return row.id
 }
 
+/**
+ * Both writes are scoped to the event and fail with code "not_found" when no
+ * row matched (wrong event, already deleted, or hidden by RLS), so a caller
+ * never reports a change that did not happen.
+ */
 export async function updateTicketType(
   client: DbClient,
-  ticketTypeId: string,
+  ticket: { eventId: string; ticketTypeId: string },
   input: Partial<TicketTypeInput>,
 ): Promise<void> {
-  const { error } = await client.from('ticket_types').update(ticketTypeColumns(input)).eq('id', ticketTypeId)
-  if (error) throw toTicketsDbError(error, 'Update ticket type')
+  const rows = unwrap(
+    await client
+      .from('ticket_types')
+      .update(ticketTypeColumns(input))
+      .eq('id', ticket.ticketTypeId)
+      .eq('event_id', ticket.eventId)
+      .select('id'),
+    'Update ticket type',
+  )
+  if (rows.length === 0) throw new TicketsDbError('not_found', 'Update ticket type: no such ticket type')
 }
 
-/** Fails with code "in_use" once tickets exist for the type. */
-export async function deleteTicketType(client: DbClient, ticketTypeId: string): Promise<void> {
-  const { error } = await client.from('ticket_types').delete().eq('id', ticketTypeId)
-  if (error) throw toTicketsDbError(error, 'Delete ticket type')
+/** Also fails with code "in_use" once tickets exist for the type. */
+export async function deleteTicketType(
+  client: DbClient,
+  ticket: { eventId: string; ticketTypeId: string },
+): Promise<void> {
+  const rows = unwrap(
+    await client
+      .from('ticket_types')
+      .delete()
+      .eq('id', ticket.ticketTypeId)
+      .eq('event_id', ticket.eventId)
+      .select('id'),
+    'Delete ticket type',
+  )
+  if (rows.length === 0) throw new TicketsDbError('not_found', 'Delete ticket type: no such ticket type')
 }

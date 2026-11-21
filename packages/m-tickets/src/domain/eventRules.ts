@@ -37,7 +37,7 @@ export function isValidEventSlug(slug: string): boolean {
 export function slugify(text: string, maxLength = 80): string {
   return text
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[̀-ͯ]/g, '') // combining accents left by NFKD: "é" -> "e"
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')

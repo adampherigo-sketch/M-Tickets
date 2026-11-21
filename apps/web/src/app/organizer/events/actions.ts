@@ -24,6 +24,7 @@ function messageFor(error: unknown): string {
   if (error instanceof TicketsDbError) {
     if (error.code === 'duplicate_slug') return 'Another event already uses that link name.'
     if (error.code === 'in_use') return 'Tickets already exist for that ticket type, so it cannot be deleted.'
+    if (error.code === 'not_found') return 'That ticket type no longer exists. Reload the page.'
     if (error.code === 'forbidden') return 'You do not have permission to do that.'
   }
   if (error instanceof OrganizerActionError) return error.message
@@ -83,7 +84,7 @@ export async function updateTicketTypeAction(eventId: string, ticketTypeId: stri
   const parsed = parseTicketTypeForm(form, event.timezone)
   if (!parsed.ok) redirect(withMessage(editorPath(eventId), 'error', parsed.message))
   try {
-    await updateTicketType(supabase, ticketTypeId, parsed.value)
+    await updateTicketType(supabase, { eventId, ticketTypeId }, parsed.value)
   } catch (error) {
     redirect(withMessage(editorPath(eventId), 'error', messageFor(error)))
   }
@@ -93,7 +94,7 @@ export async function updateTicketTypeAction(eventId: string, ticketTypeId: stri
 export async function deleteTicketTypeAction(eventId: string, ticketTypeId: string): Promise<void> {
   const { supabase } = await loadEventOrBack(eventId)
   try {
-    await deleteTicketType(supabase, ticketTypeId)
+    await deleteTicketType(supabase, { eventId, ticketTypeId })
   } catch (error) {
     redirect(withMessage(editorPath(eventId), 'error', messageFor(error)))
   }

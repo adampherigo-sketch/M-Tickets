@@ -67,7 +67,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                     {event.stats.checkedIn} / {event.stats.attendees}
                   </td>
                   <td className="mt-num">
-                    <Money cents={event.stats.grossCents} currency="USD" />
+                    <Money cents={event.stats.grossCents} currency={event.currency ?? 'USD'} />
                   </td>
                   <td>
                     <div className="mt-actions">

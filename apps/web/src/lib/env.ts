@@ -1,4 +1,5 @@
 import 'server-only'
+import { DEFAULT_HOLD_MINUTES } from '@zevaryn/m-tickets/server'
 import { z } from 'zod'
 
 // Empty strings in .env files mean "not set".
@@ -17,7 +18,7 @@ const serverSchema = z
     TICKETS_QR_SECRET: z.string().min(32, 'TICKETS_QR_SECRET must be at least 32 characters'),
     TICKETS_HOLD_MINUTES: z.preprocess(
       (value) => (value === '' || value === undefined ? undefined : Number(value)),
-      z.number().int().min(31).max(120).default(35),
+      z.number().int().min(31).max(120).default(DEFAULT_HOLD_MINUTES),
     ),
     STRIPE_SECRET_KEY: optional(z.string().regex(/^(sk|rk)_(test|live)_/, 'Expected a Stripe secret key')),
     STRIPE_CONNECT_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_')),

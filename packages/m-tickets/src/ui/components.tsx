@@ -22,7 +22,7 @@ export function PriceLabel({ kind, cents, currency }: { kind: 'rsvp' | 'paid'; c
   return kind === 'rsvp' ? <span className="mt-money">Free RSVP</span> : <Money cents={cents} currency={currency} />
 }
 
-const STATUS_LABELS: Record<EventStatus | TicketStatus, string> = {
+export const STATUS_LABELS: Readonly<Record<EventStatus | TicketStatus, string>> = {
   draft: 'Draft',
   published: 'Published',
   cancelled: 'Cancelled',

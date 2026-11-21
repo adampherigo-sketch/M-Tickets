@@ -28,11 +28,9 @@ export function zonedLocalToUtc(local: string, timeZone: string): Date {
   if (!match) throw new Error(`Expected YYYY-MM-DDTHH:mm, got "${local}"`)
   const [, y, mo, d, h, mi] = match.map(Number) as [number, number, number, number, number, number]
   const wallAsUtc = Date.UTC(y, mo - 1, d, h, mi)
-  let utc = wallAsUtc - offsetMs(new Date(wallAsUtc), timeZone)
+  const guess = wallAsUtc - offsetMs(new Date(wallAsUtc), timeZone)
   // Near a DST change the first guess can land on the other side; one more pass settles it.
-  const corrected = wallAsUtc - offsetMs(new Date(utc), timeZone)
-  if (corrected !== utc) utc = corrected
-  return new Date(utc)
+  return new Date(wallAsUtc - offsetMs(new Date(guess), timeZone))
 }
 
 /** The inverse, for <input type="datetime-local"> values. */

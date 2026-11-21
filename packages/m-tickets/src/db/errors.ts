@@ -16,6 +16,7 @@ export type TicketsDbErrorCode =
   | 'payments_not_configured'
   | 'invalid_hold'
   | 'order_not_found'
+  | 'not_found'
   | 'amount_mismatch'
   | 'order_not_refundable'
   | 'forbidden'

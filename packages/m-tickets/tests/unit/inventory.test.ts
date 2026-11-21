@@ -64,6 +64,7 @@ describe('order planning', () => {
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
     expect(plan.value.kind).toBe('free')
+    expect(plan.value.buyer).toEqual({ name: 'Ada Lovelace', email: 'ada@example.com' })
     expect(plan.value.totalCents).toBe(0)
     expect(plan.value.attendees).toHaveLength(2)
     expect(plan.value.attendees[0]).toEqual({

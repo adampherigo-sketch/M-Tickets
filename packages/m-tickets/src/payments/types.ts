@@ -83,7 +83,13 @@ export type WebhookResult =
       currency: string
       providerAccountId: string | null
     }
-  | { kind: 'checkout_expired'; orderId: string }
+  | {
+      kind: 'checkout_expired'
+      orderId: string
+      /** Checked against the order like a completed checkout, so nobody can expire another tenant's order. */
+      providerSessionId: string
+      providerAccountId: string | null
+    }
   | {
       kind: 'payment_refunded'
       providerPaymentRef: string

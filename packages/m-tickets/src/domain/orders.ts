@@ -38,6 +38,8 @@ export interface PlannedAttendee {
 
 export interface OrderPlan {
   kind: 'free' | 'paid'
+  /** Trimmed name and lowercased email: what is stored and sent to the provider. */
+  buyer: { name: string; email: string }
   currency: string
   totalCents: number
   lines: PlannedLine[]
@@ -65,11 +67,14 @@ export function planOrder(
   if (buyerName.length === 0 || buyerName.length > 200) return err({ code: 'invalid_buyer', field: 'buyerName' })
   if (!EMAIL.test(buyerEmail) || buyerEmail.length > 320) return err({ code: 'invalid_buyer', field: 'buyerEmail' })
 
+  const byId = new Map(ticketTypes.map((type) => [type.id, type]))
+
   // Merge duplicate lines and drop zero quantities (an untouched form field).
   const quantities = new Map<string, number>()
   for (const line of request.lines) {
     if (!Number.isInteger(line.quantity) || line.quantity < 0) {
-      return err({ code: 'invalid_quantity', ticketTypeId: line.ticketTypeId, ticketTypeName: '' })
+      const ticketTypeName = byId.get(line.ticketTypeId)?.name ?? ''
+      return err({ code: 'invalid_quantity', ticketTypeId: line.ticketTypeId, ticketTypeName })
     }
     if (line.quantity === 0) continue
     quantities.set(line.ticketTypeId, (quantities.get(line.ticketTypeId) ?? 0) + line.quantity)
@@ -79,7 +84,6 @@ export function planOrder(
   const total = [...quantities.values()].reduce((sum, q) => sum + q, 0)
   if (total > MAX_TICKETS_PER_ORDER) return err({ code: 'too_many_tickets', max: MAX_TICKETS_PER_ORDER })
 
-  const byId = new Map(ticketTypes.map((type) => [type.id, type]))
   const lines: PlannedLine[] = []
   let currency: string | null = null
   for (const [ticketTypeId, quantity] of quantities) {
@@ -100,7 +104,14 @@ export function planOrder(
       attendeeEmail: buyerEmail,
     })),
   )
-  return ok({ kind: totalCents > 0 ? 'paid' : 'free', currency: currency!, totalCents, lines, attendees })
+  return ok({
+    kind: totalCents > 0 ? 'paid' : 'free',
+    buyer: { name: buyerName, email: buyerEmail },
+    currency: currency!,
+    totalCents,
+    lines,
+    attendees,
+  })
 }
 
 export const ORDER_REJECTION_MESSAGES: Readonly<Record<OrderRejection['code'], string>> = {
